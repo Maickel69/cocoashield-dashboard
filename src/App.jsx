@@ -3,14 +3,14 @@ import {
   LayoutDashboard, Map as MapIcon, FileSpreadsheet,
   AlertTriangle, Search, Download, X,
   MapPin, User, Cpu, Send, Sparkles, Info, LogOut,
-  Shield, Activity, Users, BarChart3
+  Shield, Activity, Users, BarChart3, Lock, Eye, EyeOff,
+  ShieldAlert
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell
 } from "recharts";
 import { MONTHLY_OUTBREAKS } from "./data/mockData";
-import { supabase, isEmailAllowed } from "./supabaseClient";
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || "https://cocoashield-backend.onrender.com";
 
@@ -21,75 +21,342 @@ const RECS = {
   "Sano": "Mantener cronograma regular de monitoreo preventivo semanal."
 };
 
-// ── LOGIN ──────────────────────────────────────────────────────────────────────
-function LoginPage() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+// ── CUENTAS AUTORIZADAS ────────────────────────────────────────────────────────
+const REGISTERED_ACCOUNTS = [
+  {
+    identifiers: ["8040182@unamad.edu.pe", "8040182", "maickel"],
+    passwords: ["cocoashield2026", "8040182", "maickel2026", "123456"],
+    name: "Maickel (UNAMAD)",
+    email: "8040182@unamad.edu.pe",
+    role: "Dueño / Propietario",
+    canAccessDashboard: true,
+    avatar: null
+  },
+  {
+    identifiers: ["admin@cocoashield.com", "admin"],
+    passwords: ["cocoashield2026", "admin2026", "admin", "123456"],
+    name: "Administrador Central",
+    email: "admin@cocoashield.com",
+    role: "Administrador",
+    canAccessDashboard: true,
+    avatar: null
+  },
+  {
+    identifiers: ["maicolalverto158@gmail.com", "maicolalverto158", "maicol"],
+    passwords: ["cocoashield2026", "maicol158", "123456"],
+    name: "Maicol Alberto",
+    email: "maicolalverto158@gmail.com",
+    role: "Trabajador de Campo",
+    canAccessDashboard: false, // Solo app móvil
+    avatar: null
+  }
+];
 
-  const login = async () => {
-    setLoading(true); setError("");
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: window.location.origin }
-      });
-      if (error) throw error;
-    } catch {
-      setError("Error al conectar con Google. Intenta de nuevo.");
+// ── PANTALLA DE LOGIN TRADICIONAL ──────────────────────────────────────────────
+function LoginPage({ onLoginSuccess }) {
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [workerBlocked, setWorkerBlocked] = useState(null);
+
+  // Limpiar parámetros feos de OAuth previos en la barra de direcciones
+  useEffect(() => {
+    if (window.location.search.includes("error") || window.location.search.includes("code")) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  const handleLogin = (e) => {
+    if (e) e.preventDefault();
+    setErrorMsg("");
+    setWorkerBlocked(null);
+
+    const cleanId = identifier.trim().toLowerCase();
+    const cleanPass = password.trim();
+
+    if (!cleanId) {
+      setErrorMsg("Por favor, ingresa tu correo o usuario.");
+      return;
+    }
+    if (!cleanPass) {
+      setErrorMsg("Por favor, ingresa tu contraseña.");
+      return;
+    }
+
+    setLoading(true);
+
+    setTimeout(() => {
+      // Buscar cuenta
+      const account = REGISTERED_ACCOUNTS.find(acc =>
+        acc.identifiers.some(id => id.toLowerCase() === cleanId)
+      );
+
+      if (!account) {
+        setLoading(false);
+        setErrorMsg("Usuario o correo no registrado en el sistema.");
+        return;
+      }
+
+      // Validar contraseña
+      const passValid = account.passwords.includes(cleanPass);
+      if (!passValid) {
+        setLoading(false);
+        setErrorMsg("Contraseña incorrecta. Inténtalo nuevamente.");
+        return;
+      }
+
+      // Verificar si es trabajador (acceso exclusivo a app móvil)
+      if (!account.canAccessDashboard) {
+        setLoading(false);
+        setWorkerBlocked(account);
+        return;
+      }
+
+      // Login exitoso
+      const sessionData = {
+        name: account.name,
+        email: account.email,
+        role: account.role,
+        avatar: account.avatar,
+        loginAt: new Date().toISOString()
+      };
+
+      if (rememberMe) {
+        localStorage.setItem("cocoashield_user", JSON.stringify(sessionData));
+      } else {
+        sessionStorage.setItem("cocoashield_user", JSON.stringify(sessionData));
+      }
+
       setLoading(false);
+      onLoginSuccess(sessionData);
+    }, 450);
+  };
+
+  const fillQuick = (accType) => {
+    if (accType === "owner") {
+      setIdentifier("8040182@unamad.edu.pe");
+      setPassword("cocoashield2026");
+      setErrorMsg("");
+      setWorkerBlocked(null);
+    } else if (accType === "admin") {
+      setIdentifier("admin");
+      setPassword("cocoashield2026");
+      setErrorMsg("");
+      setWorkerBlocked(null);
     }
   };
 
   return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center",
-      background:"linear-gradient(135deg,#0B192C 0%,#0d2137 60%,#0B192C 100%)",
-      fontFamily:"Outfit,sans-serif", position:"relative", overflow:"hidden" }}>
-      <div style={{ position:"absolute", top:"-20%", right:"-10%", width:500, height:500,
-        borderRadius:"50%", background:"radial-gradient(circle,rgba(17,202,160,0.08) 0%,transparent 70%)", pointerEvents:"none" }} />
-      <div style={{ position:"absolute", bottom:"-20%", left:"-10%", width:600, height:600,
-        borderRadius:"50%", background:"radial-gradient(circle,rgba(0,80,136,0.12) 0%,transparent 70%)", pointerEvents:"none" }} />
-      <div style={{ background:"rgba(255,255,255,0.04)", backdropFilter:"blur(24px)",
-        border:"1px solid rgba(255,255,255,0.1)", borderRadius:24, padding:"48px 40px",
-        width:"100%", maxWidth:400, boxShadow:"0 32px 64px rgba(0,0,0,0.4)", textAlign:"center", position:"relative", zIndex:1 }}>
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, marginBottom:36 }}>
-          <div style={{ width:68, height:68, borderRadius:20,
-            background:"linear-gradient(135deg,#005088,#11CAA0)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:30, boxShadow:"0 8px 24px rgba(17,202,160,0.3)" }}>🌿</div>
-          <div>
-            <div style={{ fontSize:26, fontWeight:800, color:"#fff", letterSpacing:"-0.5px" }}>CocoaShield</div>
-            <div style={{ fontSize:11, color:"#11CAA0", fontWeight:700, letterSpacing:"2px", textTransform:"uppercase" }}>Panel de Control</div>
-          </div>
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "radial-gradient(circle at 50% 20%, #0d2744 0%, #0B192C 75%, #060e18 100%)",
+      fontFamily: "Outfit, sans-serif", position: "relative", overflow: "hidden", padding: "20px"
+    }}>
+      {/* Luces de fondo decorativas */}
+      <div style={{ position: "absolute", top: "-15%", right: "-10%", width: 520, height: 520,
+        borderRadius: "50%", background: "radial-gradient(circle, rgba(17,202,160,0.12) 0%, transparent 65%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: "-20%", left: "-15%", width: 620, height: 620,
+        borderRadius: "50%", background: "radial-gradient(circle, rgba(0,80,136,0.2) 0%, transparent 70%)", pointerEvents: "none" }} />
+
+      <div style={{
+        background: "rgba(15, 29, 49, 0.75)", backdropFilter: "blur(28px)", WebkitBackdropFilter: "blur(28px)",
+        border: "1px solid rgba(255,255,255,0.1)", borderRadius: 28, padding: "42px 38px",
+        width: "100%", maxWidth: 430, boxShadow: "0 32px 70px rgba(0,0,0,0.55)", position: "relative", zIndex: 1
+      }}>
+        {/* Cabecera del login */}
+        <div style={{ textAlign: "center", marginBottom: 30 }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: 20, margin: "0 auto 14px",
+            background: "linear-gradient(135deg, #005088 0%, #11CAA0 100%)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 28, boxShadow: "0 10px 24px rgba(17,202,160,0.3)"
+          }}>🌿</div>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: "#FFFFFF", letterSpacing: "-0.5px", margin: 0 }}>
+            CocoaShield
+          </h1>
+          <p style={{ fontSize: 12, color: "#11CAA0", fontWeight: 700, letterSpacing: "2.5px", textTransform: "uppercase", margin: "4px 0 10px" }}>
+            Panel de Control Central
+          </p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", margin: 0, lineHeight: 1.5 }}>
+            Acceso administrativo y monitoreo fitosanitario
+          </p>
         </div>
-        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:13, marginBottom:28, lineHeight:1.6 }}>
-          Acceso exclusivo para administradores del sistema fitosanitario
-        </p>
-        {error && <div style={{ background:"rgba(239,68,68,0.12)", border:"1px solid rgba(239,68,68,0.3)",
-          borderRadius:12, padding:"12px 16px", marginBottom:20, color:"#FCA5A5", fontSize:13 }}>{error}</div>}
-        <button onClick={login} disabled={loading} style={{ width:"100%", padding:"14px 20px", borderRadius:14,
-          background: loading ? "rgba(255,255,255,0.06)" : "#fff",
-          border:"1px solid rgba(255,255,255,0.12)",
-          color: loading ? "rgba(255,255,255,0.4)" : "#1E293B",
-          fontSize:15, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:12,
-          cursor: loading ? "not-allowed" : "pointer", transition:"all 0.2s",
-          boxShadow: loading ? "none" : "0 4px 16px rgba(0,0,0,0.2)" }}>
-          {loading ? (
-            <><span style={{ width:20, height:20, border:"2px solid rgba(255,255,255,0.2)",
-              borderTopColor:"#11CAA0", borderRadius:"50%", display:"inline-block", animation:"spin 0.8s linear infinite" }} />Conectando...</>
-          ) : (
-            <><svg width="20" height="20" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-            </svg>Iniciar sesion con Google</>
-          )}
-        </button>
-        <div style={{ marginTop:24, padding:"12px 16px", background:"rgba(17,202,160,0.06)",
-          borderRadius:12, border:"1px solid rgba(17,202,160,0.15)",
-          display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-          <Shield size={13} color="#11CAA0" />
-          <span style={{ fontSize:11, color:"rgba(255,255,255,0.45)" }}>Solo usuarios autorizados pueden acceder</span>
+
+        {/* Alerta de bloqueo para trabajadores */}
+        {workerBlocked && (
+          <div style={{
+            background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.35)",
+            borderRadius: 14, padding: "14px 16px", marginBottom: 20, textAlign: "left"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#FBBF24", fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>
+              <ShieldAlert size={17} />
+              <span>Cuenta de Trabajador de Campo</span>
+            </div>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", margin: 0, lineHeight: 1.45 }}>
+              Hola <strong>{workerBlocked.name}</strong>. Esta cuenta solo tiene acceso a la <strong>App Móvil</strong> para capturar fotos y diagnósticos en campo.
+            </p>
+            <div style={{ marginTop: 10 }}>
+              <a href="https://movil-chi.vercel.app" target="_blank" rel="noreferrer" style={{
+                display: "inline-block", background: "#F59E0B", color: "#1E293B", padding: "6px 12px",
+                borderRadius: 8, fontSize: 11.5, fontWeight: 700, textDecoration: "none"
+              }}>
+                Abrir App Móvil de Trabajadores →
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Mensaje de error */}
+        {errorMsg && (
+          <div style={{
+            background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.35)",
+            borderRadius: 12, padding: "12px 14px", marginBottom: 20, color: "#FCA5A5", fontSize: 12.5,
+            display: "flex", alignItems: "center", gap: 8
+          }}>
+            <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Formulario */}
+        <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.75)", marginBottom: 7 }}>
+              Usuario o Correo Electrónico
+            </label>
+            <div style={{ position: "relative" }}>
+              <User size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#64748B" }} />
+              <input
+                type="text"
+                value={identifier}
+                onChange={e => setIdentifier(e.target.value)}
+                placeholder="ej. 8040182 o admin"
+                autoComplete="username"
+                style={{
+                  width: "100%", padding: "12px 14px 12px 40px", borderRadius: 12,
+                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)",
+                  color: "#FFFFFF", fontSize: 14, outline: "none", boxSizing: "border-box",
+                  transition: "all 0.2s"
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = "#11CAA0"}
+                onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)"}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.75)" }}>
+                Contraseña
+              </label>
+            </div>
+            <div style={{ position: "relative" }}>
+              <Lock size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#64748B" }} />
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Ingresa tu clave"
+                autoComplete="current-password"
+                style={{
+                  width: "100%", padding: "12px 42px 12px 40px", borderRadius: 12,
+                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)",
+                  color: "#FFFFFF", fontSize: 14, outline: "none", boxSizing: "border-box",
+                  transition: "all 0.2s"
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = "#11CAA0"}
+                onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)"}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                  background: "none", border: "none", color: "#94A3B8", cursor: "pointer", padding: 4,
+                  display: "flex", alignItems: "center"
+                }}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5, color: "rgba(255,255,255,0.7)" }}>
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+                style={{ accentColor: "#11CAA0", width: 15, height: 15, cursor: "pointer" }}
+              />
+              <span>Recordar sesión</span>
+            </label>
+            <span style={{ fontSize: 11, color: "#11CAA0", opacity: 0.8 }}>Seguro y Privado</span>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%", padding: "14px", borderRadius: 12, marginTop: 4,
+              background: loading ? "rgba(17,202,160,0.5)" : "linear-gradient(135deg, #11CAA0 0%, #008f6f 100%)",
+              border: "none", color: "#0B192C", fontSize: 14.5, fontWeight: 800,
+              cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center",
+              justifyContent: "center", gap: 10, transition: "all 0.2s",
+              boxShadow: "0 8px 20px rgba(17,202,160,0.3)"
+            }}
+          >
+            {loading ? (
+              <>
+                <span style={{
+                  width: 18, height: 18, border: "2px solid rgba(11,25,44,0.3)",
+                  borderTopColor: "#0B192C", borderRadius: "50%", display: "inline-block",
+                  animation: "spin 0.8s linear infinite"
+                }} />
+                <span>Ingresando al panel...</span>
+              </>
+            ) : (
+              <span>Ingresar al Panel de Control</span>
+            )}
+          </button>
+        </form>
+
+        {/* Acceso rápido / Atajos para Dueño y Admin */}
+        <div style={{ marginTop: 24, paddingTop: 18, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", margin: "0 0 10px", textAlign: "center" }}>
+            Autocompletar acceso rápido:
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => fillQuick("owner")}
+              style={{
+                flex: 1, padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)", color: "#11CAA0", fontSize: 11.5,
+                fontWeight: 700, cursor: "pointer", transition: "all 0.2s", textAlign: "center"
+              }}
+              onMouseOver={e => e.currentTarget.style.background = "rgba(17,202,160,0.12)"}
+              onMouseOut={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+            >
+              👑 Dueño (8040182)
+            </button>
+            <button
+              type="button"
+              onClick={() => fillQuick("admin")}
+              style={{
+                flex: 1, padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)", color: "#38BDF8", fontSize: 11.5,
+                fontWeight: 700, cursor: "pointer", transition: "all 0.2s", textAlign: "center"
+              }}
+              onMouseOver={e => e.currentTarget.style.background = "rgba(56,189,248,0.12)"}
+              onMouseOut={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+            >
+              🛡️ Admin
+            </button>
+          </div>
         </div>
       </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -97,33 +364,9 @@ function LoginPage() {
   );
 }
 
-function AccessDenied({ user, onLogout }) {
-  return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center",
-      background:"linear-gradient(135deg,#0B192C,#1a0a0a)", fontFamily:"Outfit,sans-serif" }}>
-      <div style={{ background:"rgba(255,255,255,0.04)", backdropFilter:"blur(24px)",
-        border:"1px solid rgba(239,68,68,0.2)", borderRadius:24, padding:"48px 40px", maxWidth:400, textAlign:"center" }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>🚫</div>
-        <h2 style={{ color:"#fff", fontSize:22, fontWeight:800, marginBottom:8 }}>Sin Acceso al Panel</h2>
-        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, marginBottom:6 }}>
-          La cuenta <strong style={{ color:"#FCA5A5" }}>{user?.email}</strong> no tiene permisos.
-        </p>
-        <p style={{ color:"rgba(255,255,255,0.3)", fontSize:12, marginBottom:28 }}>
-          Contacta al administrador si crees que esto es un error.
-        </p>
-        <button onClick={onLogout} style={{ padding:"12px 24px", borderRadius:12,
-          background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)",
-          color:"#fff", fontSize:14, fontWeight:600, cursor:"pointer", width:"100%" }}>
-          Salir y usar otra cuenta
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── MAIN APP ───────────────────────────────────────────────────────────────────
 export default function App() {
-  const [session, setSession]             = useState(null);
+  const [currentUser, setCurrentUser]     = useState(null);
   const [authLoading, setAuthLoading]     = useState(true);
   const [activeSection, setActiveSection] = useState("dashboard");
   const [backendStatus, setBackendStatus] = useState("connecting");
@@ -131,7 +374,7 @@ export default function App() {
   const [cases, setCases]           = useState([]);
   const [monthlyData, setMonthlyData] = useState(MONTHLY_OUTBREAKS);
   const [toasts, setToasts]         = useState([]);
-  const [selectedCase, setSelectedCase]     = useState(null);
+  const [selectedCase, setSelectedCase]         = useState(null);
   const [prescriptionCase, setPrescriptionCase] = useState(null);
   const [prescriptionText, setPrescriptionText] = useState("");
   const [selectedMapCase, setSelectedMapCase]   = useState(null);
@@ -139,16 +382,30 @@ export default function App() {
   const [filterDate, setFilterDate]       = useState("Todos");
   const [searchQuery, setSearchQuery]     = useState("");
 
+  // Cargar sesión persistida al arrancar
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setAuthLoading(false); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => { setSession(s); setAuthLoading(false); });
-    return () => subscription.unsubscribe();
+    try {
+      const savedLocal = localStorage.getItem("cocoashield_user");
+      const savedSession = sessionStorage.getItem("cocoashield_user");
+      const saved = savedLocal || savedSession;
+      if (saved) {
+        setCurrentUser(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Error cargando sesion", e);
+    } finally {
+      setAuthLoading(false);
+    }
   }, []);
 
-  const logout = async () => { await supabase.auth.signOut(); setSession(null); };
+  const handleLogout = () => {
+    localStorage.removeItem("cocoashield_user");
+    sessionStorage.removeItem("cocoashield_user");
+    setCurrentUser(null);
+  };
 
   const addToast = (title, msg) => {
-    const id = Date.now()+"";
+    const id = Date.now() + "";
     setToasts(p => [...p, { id, title, msg }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 6000);
   };
@@ -161,15 +418,17 @@ export default function App() {
     });
   };
 
+  // Cargar casos desde backend
   useEffect(() => {
-    if (!session) return;
+    if (!currentUser) return;
     fetch(`${BACKEND_URL}/api/cases`, { signal: AbortSignal.timeout(5000) })
       .then(r => r.json()).then(d => { setCases(d); setBackendStatus("connected"); })
       .catch(() => setBackendStatus("offline"));
-  }, [session]);
+  }, [currentUser]);
 
+  // Suscripción SSE en tiempo real
   useEffect(() => {
-    if (!session) return;
+    if (!currentUser) return;
     const connect = () => {
       const es = new EventSource(`${BACKEND_URL}/api/events`);
       sseRef.current = es;
@@ -186,7 +445,7 @@ export default function App() {
     };
     connect();
     return () => { if (sseRef.current) sseRef.current.close(); };
-  }, [session]);
+  }, [currentUser]);
 
   const metrics = useMemo(() => {
     const counts = {};
@@ -226,7 +485,10 @@ export default function App() {
     return true;
   }), [cases, filterRegion, filterDate, searchQuery]);
 
-  const openPrescription = (c) => { setPrescriptionCase(c); setPrescriptionText(c.prescription || RECS[c.diagnosis] || RECS["Sano"]); };
+  const openPrescription = (c) => {
+    setPrescriptionCase(c);
+    setPrescriptionText(c.prescription || RECS[c.diagnosis] || RECS["Sano"]);
+  };
 
   const savePrescription = async () => {
     if (!prescriptionCase) return;
@@ -260,27 +522,29 @@ export default function App() {
     return { x: Math.max(40,Math.min(460,x)), y: Math.max(40,Math.min(360,y)) };
   };
 
-  // ── Guards ────────────────────────────────────────────────────────────────────
-  if (authLoading) return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"#0B192C" }}>
-      <div style={{ textAlign:"center" }}>
-        <div style={{ width:36, height:36, border:"3px solid rgba(17,202,160,0.25)", borderTopColor:"#11CAA0",
-          borderRadius:"50%", margin:"0 auto 14px", animation:"spin 0.8s linear infinite" }} />
-        <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, fontFamily:"Outfit,sans-serif" }}>Verificando sesion...</p>
+  if (authLoading) {
+    return (
+      <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"#0B192C" }}>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ width:36, height:36, border:"3px solid rgba(17,202,160,0.25)", borderTopColor:"#11CAA0",
+            borderRadius:"50%", margin:"0 auto 14px", animation:"spin 0.8s linear infinite" }} />
+          <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, fontFamily:"Outfit,sans-serif" }}>Cargando CocoaShield...</p>
+        </div>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
-  if (!session) return <LoginPage />;
-  if (!isEmailAllowed(session.user?.email)) return <AccessDenied user={session.user} onLogout={logout} />;
+    );
+  }
 
-  const name   = session.user?.user_metadata?.full_name || session.user?.email?.split("@")[0] || "Admin";
-  const avatar = session.user?.user_metadata?.avatar_url;
+  if (!currentUser) {
+    return <LoginPage onLoginSuccess={setCurrentUser} />;
+  }
 
-  // ── RENDER ────────────────────────────────────────────────────────────────────
+  const name = currentUser.name || "Usuario";
+  const role = currentUser.role || "Administrador";
+
   return (
     <div className="dashboard-root">
-      {/* Toasts */}
+      {/* Notificaciones Toast */}
       <div className="toast-container">
         {toasts.map(t => (
           <div key={t.id} className="toast">
@@ -291,20 +555,20 @@ export default function App() {
         ))}
       </div>
 
-      {/* Sidebar */}
+      {/* Barra lateral / Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="logo-badge" style={{ fontSize:20 }}>🌿</div>
           <div className="brand-info">
             <span className="brand-name">CocoaShield</span>
-            <span className="brand-tagline">Panel de Control</span>
+            <span className="brand-tagline">Panel Central</span>
           </div>
         </div>
 
         <nav className="sidebar-nav">
           <p style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"1.5px", color:"rgba(255,255,255,0.25)", padding:"12px 20px 6px" }}>Navegacion</p>
           {[
-            { id:"dashboard", icon:<LayoutDashboard size={16}/>, label:"Inicio" },
+            { id:"dashboard", icon:<LayoutDashboard size={16}/>, label:"Inicio General" },
             { id:"map",       icon:<MapIcon size={16}/>,          label:"Mapa Epidemiologico" },
             { id:"reports",   icon:<FileSpreadsheet size={16}/>,  label:"Reportes y Recetas" }
           ].map(it => (
@@ -315,30 +579,53 @@ export default function App() {
           ))}
         </nav>
 
+        {/* Informacion del Usuario logueado */}
         <div className="sidebar-footer">
           <div className="sidebar-user-card">
-            {avatar
-              ? <img src={avatar} alt="" style={{ width:34, height:34, borderRadius:"50%", border:"2px solid rgba(17,202,160,0.4)", flexShrink:0 }} />
-              : <div style={{ width:34, height:34, borderRadius:"50%", background:"linear-gradient(135deg,#005088,#11CAA0)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, color:"#fff", flexShrink:0 }}>
-                  {name[0]?.toUpperCase()}
-                </div>
-            }
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:"#fff", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{name}</div>
-              <div style={{ fontSize:10, color:"#11CAA0", fontWeight:600 }}>Administrador</div>
+            <div style={{
+              width: 36, height: 36, borderRadius: "50%",
+              background: "linear-gradient(135deg,#005088,#11CAA0)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 14, fontWeight: 800, color: "#fff", flexShrink: 0,
+              boxShadow: "0 4px 10px rgba(17,202,160,0.25)"
+            }}>
+              {name[0]?.toUpperCase()}
             </div>
-            <button onClick={logout} title="Cerrar sesion"
-              style={{ background:"rgba(255,255,255,0.06)", border:"none", borderRadius:8, padding:6, cursor:"pointer", display:"flex" }}
-              onMouseOver={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}
-              onMouseOut={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}>
-              <LogOut size={14} color="rgba(255,255,255,0.5)"/>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {name}
+              </div>
+              <div style={{ fontSize: 10.5, color: "#11CAA0", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                {role}
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              title="Cerrar sesion"
+              style={{
+                background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 8, padding: 7,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 0.2s"
+              }}
+              onMouseOver={e => {
+                e.currentTarget.style.background = "rgba(239,68,68,0.2)";
+                e.currentTarget.style.color = "#EF4444";
+              }}
+              onMouseOut={e => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                e.currentTarget.style.color = "rgba(255,255,255,0.5)";
+              }}
+            >
+              <LogOut size={15} color="currentColor" />
             </button>
           </div>
-          <div style={{ fontSize:10, color:"rgba(255,255,255,0.18)", textAlign:"center", marginTop:8 }}>CocoaShield AI v1.0 · UNAMAD</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", textAlign: "center", marginTop: 6 }}>
+            CocoaShield AI v1.0 · UNAMAD
+          </div>
         </div>
       </aside>
 
-      {/* Main */}
+      {/* Contenido Principal */}
       <main className="main-wrapper">
         <header className="top-navbar">
           <div className="page-title-group">
@@ -360,14 +647,13 @@ export default function App() {
         </header>
 
         <div className="content-body">
-
-          {/* DASHBOARD */}
+          {/* DASHBOARD PRINCIPAL */}
           {activeSection==="dashboard" && (
             <>
               <section className="kpi-row">
                 {[
-                  { icon:<Activity size={22}/>,    title:"Total Escaneos",        value:metrics.totalScans, trend:"+12% este mes",     bg:"linear-gradient(135deg,#005088,#0070bb)", glow:"rgba(0,80,136,0.25)" },
-                  { icon:<AlertTriangle size={22}/>, title:"Alertas Activas",     value:metrics.alerts,     trend:"Requieren atencion", bg:"linear-gradient(135deg,#DC2626,#EF4444)", glow:"rgba(239,68,68,0.25)" },
+                  { icon:<Activity size={22}/>,      title:"Total Escaneos",       value:metrics.totalScans, trend:"+12% este mes",     bg:"linear-gradient(135deg,#005088,#0070bb)", glow:"rgba(0,80,136,0.25)" },
+                  { icon:<AlertTriangle size={22}/>, title:"Alertas Activas",      value:metrics.alerts,     trend:"Requieren atencion", bg:"linear-gradient(135deg,#DC2626,#EF4444)", glow:"rgba(239,68,68,0.25)" },
                   { icon:<Cpu size={22}/>,          title:"Patogeno Frecuente",   value:metrics.top,        trend:"Incidencia alta",    bg:"linear-gradient(135deg,#D97706,#F59E0B)", glow:"rgba(245,158,11,0.25)", small:true },
                   { icon:<Users size={22}/>,        title:"Productores Activos",  value:metrics.farmers,    trend:"Brigadas en campo",  bg:"linear-gradient(135deg,#059669,#10B981)", glow:"rgba(16,185,129,0.25)" }
                 ].map((k,i) => (
@@ -395,9 +681,9 @@ export default function App() {
                         <YAxis stroke="#94A3B8" fontSize={11} fontWeight={600}/>
                         <Tooltip contentStyle={{ borderRadius:12, border:"1px solid #E2E8F0", boxShadow:"0 8px 24px rgba(0,0,0,0.1)", fontFamily:"Outfit,sans-serif" }}/>
                         <Legend wrapperStyle={{ fontSize:12, fontWeight:600 }}/>
-                        <Line type="monotone" dataKey="Monilia"      stroke="#005088" strokeWidth={2.5} activeDot={{ r:6 }}/>
+                        <Line type="monotone" dataKey="Monilia" stroke="#005088" strokeWidth={2.5} activeDot={{ r:6 }}/>
                         <Line type="monotone" dataKey="EscobaDebruja" stroke="#11CAA0" strokeWidth={2.5} name="Escoba de Bruja"/>
-                        <Line type="monotone" dataKey="MazorcaNegra"  stroke="#F59E0B" strokeWidth={2.5} name="Mazorca Negra"/>
+                        <Line type="monotone" dataKey="MazorcaNegra" stroke="#F59E0B" strokeWidth={2.5} name="Mazorca Negra"/>
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -438,7 +724,7 @@ export default function App() {
                 <div style={{ padding:"0 20px 16px" }}>
                   {cases.slice(0,6).map(c => (
                     <div key={c.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderBottom:"1px solid #F8FAFC" }}>
-                      <span style={{ fontSize:11, fontWeight:700, color:"#005088", background:"rgba(0,80,136,0.08)", padding:"3px 10px", borderRadius:6, minWidth:64, textAlign:"center" }}>{c.id}</span>
+                      <span style={{ fontSize:11, fontWeight:700, color: "#005088", background:"rgba(0,80,136,0.08)", padding:"3px 10px", borderRadius:6, minWidth:64, textAlign:"center" }}>{c.id}</span>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:13, fontWeight:600, color:"#1E293B" }}>{c.diagnosis}</div>
                         <div style={{ fontSize:11, color:"#94A3B8" }}>{c.location} · {c.farmer}</div>
@@ -453,7 +739,7 @@ export default function App() {
             </>
           )}
 
-          {/* MAP */}
+          {/* MAPA EPIDEMIOLOGICO */}
           {activeSection==="map" && (
             <section className="map-layout-container">
               <div className="map-wrapper-box">
@@ -531,7 +817,7 @@ export default function App() {
             </section>
           )}
 
-          {/* REPORTS */}
+          {/* REPORTES Y RECETAS */}
           {activeSection==="reports" && (
             <section className="table-card">
               <div className="table-header-row">
@@ -590,7 +876,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* Detail Modal */}
+      {/* Modal de Detalle */}
       {selectedCase && (
         <MModal onClose={()=>setSelectedCase(null)} title={`Caso ${selectedCase.id}`}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
@@ -607,7 +893,7 @@ export default function App() {
         </MModal>
       )}
 
-      {/* Prescription Modal */}
+      {/* Modal de Receta */}
       {prescriptionCase && (
         <MModal onClose={()=>setPrescriptionCase(null)} title={`Receta · ${prescriptionCase.farmer}`}>
           <p style={{ fontSize:12, color:"#64748B", marginBottom:12 }}>
