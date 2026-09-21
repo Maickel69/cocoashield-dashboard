@@ -379,8 +379,10 @@ export default function App() {
   const [prescriptionText, setPrescriptionText] = useState("");
   const [selectedMapCase, setSelectedMapCase]   = useState(null);
   const [filterRegion, setFilterRegion]   = useState("Todas");
+  const [filterDisease, setFilterDisease] = useState("Todas");
   const [filterDate, setFilterDate]       = useState("Todos");
   const [searchQuery, setSearchQuery]     = useState("");
+  const [lightboxImage, setLightboxImage] = useState(null);
 
   // Cargar sesión persistida al arrancar
   useEffect(() => {
@@ -421,7 +423,7 @@ export default function App() {
   // Cargar casos desde backend
   useEffect(() => {
     if (!currentUser) return;
-    fetch(`${BACKEND_URL}/api/cases`, { signal: AbortSignal.timeout(5000) })
+    fetch(`${BACKEND_URL}/api/cases`, { signal: AbortSignal.timeout(15000) })
       .then(r => r.json()).then(d => { setCases(d); setBackendStatus("connected"); })
       .catch(() => setBackendStatus("offline"));
   }, [currentUser]);
@@ -473,6 +475,7 @@ export default function App() {
 
   const filtered = useMemo(() => cases.filter(c => {
     if (filterRegion !== "Todas" && c.region !== filterRegion) return false;
+    if (filterDisease !== "Todas" && !c.diagnosis?.toLowerCase().includes(filterDisease.toLowerCase())) return false;
     if (filterDate !== "Todos") {
       const diff = Math.abs(new Date() - new Date(c.date)) / 864e5;
       if (filterDate === "7d" && diff > 7) return false;
@@ -483,7 +486,7 @@ export default function App() {
       return [c.id,c.location,c.farmer,c.diagnosis,c.region].some(v => v?.toLowerCase().includes(q));
     }
     return true;
-  }), [cases, filterRegion, filterDate, searchQuery]);
+  }), [cases, filterRegion, filterDisease, filterDate, searchQuery]);
 
   const openPrescription = (c) => {
     setPrescriptionCase(c);
@@ -723,17 +726,36 @@ export default function App() {
                 </div>
                 <div style={{ padding:"0 20px 16px" }}>
                   {cases.slice(0,6).map(c => (
-                    <div key={c.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderBottom:"1px solid #F8FAFC" }}>
-                      <span style={{ fontSize:11, fontWeight:700, color: "#005088", background:"rgba(0,80,136,0.08)", padding:"3px 10px", borderRadius:6, minWidth:64, textAlign:"center" }}>{c.id}</span>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:13, fontWeight:600, color:"#1E293B" }}>{c.diagnosis}</div>
-                        <div style={{ fontSize:11, color:"#94A3B8" }}>{c.location} · {c.farmer}</div>
+                    <div key={c.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid #F8FAFC" }}>
+                      <span className="case-id-badge">{c.id}</span>
+                      <div 
+                        onClick={() => (c.image || c.photo) && setLightboxImage({ url: c.image || c.photo, title: `Caso ${c.id} · ${c.diagnosis}` })}
+                        title={(c.image || c.photo) ? "Clic para ampliar foto" : "Sin foto"}
+                        style={{
+                          width: 38, height: 38, borderRadius: 8, overflow: "hidden",
+                          border: "1px solid #E2E8F0", flexShrink: 0, cursor: (c.image || c.photo) ? "pointer" : "default",
+                          backgroundColor: "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center"
+                        }}
+                      >
+                        {(c.image || c.photo) ? (
+                          <img src={c.image || c.photo} alt={c.diagnosis} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <span style={{ fontSize: 16 }}>🌿</span>
+                        )}
                       </div>
-                      <span style={{ fontSize:13, fontWeight:700, color:"#11CAA0" }}>{c.confidence}%</span>
+                      <div style={{ flex:1, minWidth: 0 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#1E293B", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                          {c.diagnosis}
+                        </div>
+                        <div style={{ fontSize:11, color:"#94A3B8", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                          {c.location} · {c.farmer}
+                        </div>
+                      </div>
+                      <span style={{ fontSize:12.5, fontWeight:800, color:"#10B981" }}>{c.confidence}%</span>
                       <SBadge s={c.status}/>
                     </div>
                   ))}
-                  {cases.length===0 && <p style={{ color:"#94A3B8", textAlign:"center", padding:"28px 0", fontSize:13 }}>Sin diagnosticos aun. Usa la app movil para el primer escaneo.</p>}
+                  {cases.length===0 && <p style={{ color:"#94A3B8", textAlign:"center", padding:"28px 0", fontSize:13 }}>Sin diagnósticos aún. Usa la app móvil para registrar el primer caso.</p>}
                 </div>
               </section>
             </>
@@ -745,7 +767,7 @@ export default function App() {
               <div className="map-wrapper-box">
                 <div className="map-legend-overlay">
                   <h4 className="map-legend-title">Severidad</h4>
-                  {[["var(--color-critical)","Critico"],["var(--color-warning)","En Seguimiento"],["var(--color-success)","Sano"]].map(([c,l])=>(
+                  {[["var(--color-critical)","Crítico"],["var(--color-warning)","En Seguimiento"],["var(--color-success)","Sano"]].map(([c,l])=>(
                     <div key={l} className="map-legend-row"><span className="map-legend-color" style={{ backgroundColor:c }}/><span>{l}</span></div>
                   ))}
                 </div>
@@ -775,9 +797,19 @@ export default function App() {
                   <div className="map-popup-drawer">
                     <div className="popup-body" style={{ padding:20 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                        <div>
-                          <div className="popup-location-name">{selectedMapCase.location}</div>
-                          <div className="popup-farmer-name"><User size={11} style={{ display:"inline", marginRight:4 }}/>{selectedMapCase.farmer}</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                          {(selectedMapCase.image || selectedMapCase.photo) && (
+                            <img 
+                              src={selectedMapCase.image || selectedMapCase.photo} 
+                              alt={selectedMapCase.diagnosis} 
+                              style={{ width:48, height:48, borderRadius:10, objectFit:"cover", border:"1.5px solid #E2E8F0", cursor:"pointer" }}
+                              onClick={() => setLightboxImage({ url: selectedMapCase.image || selectedMapCase.photo, title: `${selectedMapCase.id} - ${selectedMapCase.diagnosis}` })}
+                            />
+                          )}
+                          <div>
+                            <div className="popup-location-name">{selectedMapCase.location}</div>
+                            <div className="popup-farmer-name"><User size={11} style={{ display:"inline", marginRight:4 }}/>{selectedMapCase.farmer}</div>
+                          </div>
                         </div>
                         <button onClick={()=>setSelectedMapCase(null)} style={{ background:"#F1F5F9", border:"none", borderRadius:8, padding:6, cursor:"pointer" }}><X size={14}/></button>
                       </div>
@@ -793,14 +825,14 @@ export default function App() {
               </div>
               <div className="map-filters-panel">
                 <div className="panel-card-title-group" style={{ borderBottom:"1px solid var(--color-border)", paddingBottom:12 }}>
-                  <h2>Filtros del Mapa</h2><p>Refinar visualizacion</p>
+                  <h2>Filtros del Mapa</h2><p>Refinar visualización geográfica</p>
                 </div>
                 <div className="filter-group">
                   <label className="filter-label">Fecha</label>
                   <select className="filter-select" value={filterDate} onChange={e=>setFilterDate(e.target.value)}>
                     <option value="Todos">Todos los registros</option>
-                    <option value="7d">Ultimos 7 dias</option>
-                    <option value="30d">Ultimos 30 dias</option>
+                    <option value="7d">Últimos 7 días</option>
+                    <option value="30d">Últimos 30 días</option>
                   </select>
                 </div>
                 <div className="filter-group">
@@ -811,7 +843,7 @@ export default function App() {
                 </div>
                 <div style={{ background:"#F0F9FF", border:"1px solid #BAE6FD", padding:14, borderRadius:12, display:"flex", gap:8 }}>
                   <Info size={15} style={{ color:"#0284C7", flexShrink:0, marginTop:2 }}/>
-                  <p style={{ fontSize:11, color:"#0369A1", lineHeight:1.5 }}>Haz clic en un pin del mapa para ver el detalle y emitir receta agronomica.</p>
+                  <p style={{ fontSize:11, color:"#0369A1", lineHeight:1.5 }}>Haz clic en un pin del mapa para ver la foto de la mazorca y emitir receta agronómica.</p>
                 </div>
               </div>
             </section>
@@ -820,46 +852,114 @@ export default function App() {
           {/* REPORTES Y RECETAS */}
           {activeSection==="reports" && (
             <section className="table-card">
-              <div className="table-header-row">
-                <div style={{ display:"flex", gap:12, flex:1, flexWrap:"wrap" }}>
-                  <div style={{ position:"relative", flex:1, minWidth:220, maxWidth:380 }}>
-                    <Search size={14} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"#94A3B8" }}/>
-                    <input className="search-input" placeholder="Buscar por ID, finca, productor..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{ paddingLeft:36 }}/>
+              <div className="table-header-row" style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:20, borderBottom:"1px solid #E2E8F0", paddingBottom:16 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
+                  <div style={{ display:"flex", gap:12, flex:1, flexWrap:"wrap", alignItems:"center" }}>
+                    <div style={{ position:"relative", flex:1, minWidth:240, maxWidth:380 }}>
+                      <Search size={15} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"#94A3B8" }}/>
+                      <input className="search-input" placeholder="Buscar por ID, finca, productor, patógeno..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} />
+                    </div>
+                    <select className="filter-select" style={{ maxWidth:190 }} value={filterRegion} onChange={e=>setFilterRegion(e.target.value)}>
+                      {["Todas","Sucumbios","Napo","Orellana","Pastaza"].map(v=><option key={v} value={v}>{v==="Todas"?"Todas las provincias":v}</option>)}
+                    </select>
                   </div>
-                  <select className="filter-select" style={{ maxWidth:180 }} value={filterRegion} onChange={e=>setFilterRegion(e.target.value)}>
-                    {["Todas","Sucumbios","Napo","Orellana","Pastaza"].map(v=><option key={v} value={v}>{v==="Todas"?"Todas las provincias":v}</option>)}
-                  </select>
+                  <button className="export-btn" onClick={exportCSV}><Download size={14}/> Exportar Excel</button>
                 </div>
-                <button className="export-btn" onClick={exportCSV}><Download size={14}/> Exportar Excel</button>
+
+                {/* Filtros rápidos de Enfermedad */}
+                <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:2 }}>
+                  {["Todas", "Monilia", "Mazorca Negra", "Escoba de Bruja", "Sano"].map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setFilterDisease(d)}
+                      className={`disease-filter-chip ${filterDisease === d ? "active" : ""}`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div style={{ overflowX:"auto" }}>
+
+              <div style={{ overflowX:"auto", borderRadius:12, border:"1px solid #E2E8F0" }}>
                 <table className="data-table">
-                  <thead><tr>{["ID Caso","Ubicacion / Finca","Provincia","Fecha","Diagnostico IA","Certeza","Estado","Productor","Acciones"].map(h=><th key={h}>{h}</th>)}</tr></thead>
+                  <thead>
+                    <tr>
+                      {["ID Caso", "Evidencia", "Ubicación / Finca", "Provincia", "Fecha", "Diagnóstico IA", "Certeza", "Estado", "Productor", "Acciones"].map(h => (
+                        <th key={h}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
                   <tbody>
                     {filtered.length===0
-                      ? <tr><td colSpan={9} style={{ textAlign:"center", padding:36, color:"#94A3B8" }}>Sin registros con ese filtro.</td></tr>
+                      ? <tr><td colSpan={10} style={{ textAlign:"center", padding:40, color:"#94A3B8" }}>No se encontraron registros con los filtros seleccionados.</td></tr>
                       : filtered.map(c => (
                           <tr key={c.id}>
                             <td><span className="case-id-badge">{c.id}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"#1E293B", fontSize:13 }}>{c.location}</div>
+                              <div 
+                                onClick={() => (c.image || c.photo) && setLightboxImage({ url: c.image || c.photo, title: `Caso ${c.id} · ${c.diagnosis}` })}
+                                title={(c.image || c.photo) ? "Clic para ampliar foto" : "Sin foto"}
+                                style={{
+                                  width: 46, height: 46, borderRadius: 10, overflow: "hidden",
+                                  border: "1.5px solid #E2E8F0", backgroundColor: "#F8FAFC",
+                                  cursor: (c.image || c.photo) ? "pointer" : "default",
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  boxShadow: "0 2px 6px rgba(0,0,0,0.04)", position: "relative"
+                                }}
+                              >
+                                {(c.image || c.photo) ? (
+                                  <img src={c.image || c.photo} alt={c.diagnosis} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                ) : (
+                                  <span style={{ fontSize: 20 }}>🌿</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ fontWeight:700, color:"#1E293B", fontSize:13 }}>{c.location}</div>
                               <div style={{ fontSize:11, color:"#94A3B8" }}>GPS: {c.lat?.toFixed(4)}, {c.lng?.toFixed(4)}</div>
                             </td>
-                            <td style={{ fontSize:13 }}>{c.region}</td>
+                            <td style={{ fontSize:13, fontWeight:600, color:"#475569" }}>{c.region}</td>
                             <td style={{ fontSize:12, color:"#64748B" }}>{c.date?.split("T")[0]}</td>
                             <td>
-                              <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontWeight:700, fontSize:13 }}>
-                                <span style={{ width:8, height:8, borderRadius:"50%", backgroundColor: c.diagnosis==="Sano"?"#10B981":c.diagnosis==="Monilia"?"#EF4444":"#F59E0B", display:"inline-block" }}/>
-                                {c.diagnosis}
+                              <span style={{ display:"inline-flex", flexDirection:"column", gap:2 }}>
+                                <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontWeight:750, fontSize:13, color:"#1E293B" }}>
+                                  <span style={{
+                                    width:9, height:9, borderRadius:"50%",
+                                    backgroundColor: c.diagnosis==="Sano"?"#10B981":c.diagnosis==="Monilia"?"#EF4444":c.diagnosis==="Mazorca Negra"?"#F59E0B":"#D97706",
+                                    boxShadow: `0 0 6px ${c.diagnosis==="Sano"?"#10B981":c.diagnosis==="Monilia"?"#EF4444":"#F59E0B"}`
+                                  }}/>
+                                  {c.diagnosis}
+                                </span>
+                                <span style={{ fontSize:10.5, fontStyle:"italic", color:"#94A3B8" }}>
+                                  {c.diagnosis==="Monilia"?"M. roreri":c.diagnosis==="Mazorca Negra"?"Phytophthora spp.":c.diagnosis==="Escoba de Bruja"?"M. perniciosa":"Saludable"}
+                                </span>
                               </span>
                             </td>
-                            <td style={{ fontWeight:700, color:"#005088", fontSize:13 }}>{c.confidence}%</td>
-                            <td><SBadge s={c.status}/></td>
-                            <td style={{ fontSize:13 }}>{c.farmer}</td>
                             <td>
-                              <div style={{ display:"flex", gap:8 }}>
-                                <button onClick={()=>setSelectedCase(c)} className="table-btn-outline">Ver</button>
-                                <button onClick={()=>openPrescription(c)} className="table-btn-primary">Receta</button>
+                              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                <div style={{ width:38, height:6, backgroundColor:"#E2E8F0", borderRadius:4, overflow:"hidden" }}>
+                                  <div style={{ width:`${c.confidence}%`, height:"100%", backgroundColor: c.confidence>90?"#10B981":"#F59E0B" }}/>
+                                </div>
+                                <span style={{ fontWeight:800, color:"#005088", fontSize:12.5 }}>{c.confidence}%</span>
+                              </div>
+                            </td>
+                            <td><SBadge s={c.status}/></td>
+                            <td>
+                              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                <div style={{ width:24, height:24, borderRadius:"50%", background:"#E2E8F0", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10.5, fontWeight:800, color:"#475569" }}>
+                                  {c.farmer ? c.farmer[0]?.toUpperCase() : "T"}
+                                </div>
+                                <span style={{ fontSize:13, fontWeight:600, color:"#334155" }}>{c.farmer}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display:"flex", gap:6 }}>
+                                <button onClick={()=>setSelectedCase(c)} className="table-btn-outline" title="Ver ficha técnica completa">
+                                  <Eye size={13} style={{ display:"inline", marginRight:4 }}/> Ver
+                                </button>
+                                <button onClick={()=>openPrescription(c)} className="table-btn-primary" title="Emitir receta agronómica">
+                                  <Send size={13} style={{ display:"inline", marginRight:4 }}/> Receta
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -868,44 +968,155 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
-              <div style={{ padding:"10px 20px", borderTop:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", fontSize:12, color:"#94A3B8" }}>
-                <span>{filtered.length} registro(s)</span><span>Total: {cases.length}</span>
+              <div style={{ padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:12, color:"#94A3B8" }}>
+                <span>Mostrando {filtered.length} de {cases.length} caso(s)</span>
+                <span>CocoaShield Cloud Database · Sincronizado</span>
               </div>
             </section>
           )}
         </div>
       </main>
 
-      {/* Modal de Detalle */}
+      {/* MODAL DE FICHA TÉCNICA DETALLADA */}
       {selectedCase && (
-        <MModal onClose={()=>setSelectedCase(null)} title={`Caso ${selectedCase.id}`}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-            {[["Ubicacion",selectedCase.location],["Productor",selectedCase.farmer],["Diagnostico IA",selectedCase.diagnosis],["Certeza",`${selectedCase.confidence}%`],["Estado",selectedCase.status],["Fecha",selectedCase.date?.split("T")[0]],["Region",selectedCase.region],["GPS",`${selectedCase.lat?.toFixed(4)}, ${selectedCase.lng?.toFixed(4)}`]].map(([k,v])=>(
-              <div key={k} style={{ background:"#F8FAFC", borderRadius:10, padding:"10px 14px" }}>
-                <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", color:"#94A3B8", marginBottom:3 }}>{k}</div>
-                <div style={{ fontSize:13, fontWeight:600, color:"#1E293B" }}>{v}</div>
+        <MModal onClose={()=>setSelectedCase(null)} title={`Ficha Técnica · Caso ${selectedCase.id}`}>
+          <div style={{ display:"flex", gap:16, flexDirection:"column" }}>
+            {/* Fotografía de Campo Ampliada */}
+            <div style={{
+              width: "100%", height: 230, borderRadius: 16, overflow: "hidden",
+              backgroundColor: "#0B192C", border: "1.5px solid #E2E8F0",
+              position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.08)"
+            }}>
+              {(selectedCase.image || selectedCase.photo) ? (
+                <img 
+                  src={selectedCase.image || selectedCase.photo} 
+                  alt={selectedCase.diagnosis} 
+                  style={{ width: "100%", height: "100%", objectFit: "contain", cursor: "zoom-in" }}
+                  onClick={() => setLightboxImage({ url: selectedCase.image || selectedCase.photo, title: `${selectedCase.id} - ${selectedCase.diagnosis}` })}
+                />
+              ) : (
+                <div style={{ textAlign: "center", color: "#94A3B8" }}>
+                  <span style={{ fontSize: 40, display:"block", marginBottom:6 }}>🌿</span>
+                  <div style={{ fontSize: 12 }}>Sin imagen capturada para este caso</div>
+                </div>
+              )}
+              <div style={{ position: "absolute", top: 12, right: 12, backgroundColor: "rgba(0,0,0,0.75)", color: "#11CAA0", padding: "4px 12px", borderRadius: 20, fontSize: 11.5, fontWeight: 800 }}>
+                {selectedCase.confidence}% Certeza IA
               </div>
-            ))}
+            </div>
+
+            {/* Grid de Metadatos */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10 }}>
+              {[
+                ["Diagnóstico IA", selectedCase.diagnosis],
+                ["Nombre Científico", selectedCase.diagnosis === "Monilia" ? "Moniliophthora roreri" : (selectedCase.diagnosis === "Escoba de Bruja" ? "Moniliophthora perniciosa" : (selectedCase.diagnosis === "Mazorca Negra" ? "Phytophthora spp." : "Theobroma cacao"))],
+                ["Finca / Parcela", selectedCase.location],
+                ["Productor Responsable", selectedCase.farmer],
+                ["Provincia", selectedCase.region],
+                ["Fecha de Escaneo", selectedCase.date?.split("T")[0]],
+                ["Nivel de Severidad", selectedCase.severity || "Alta"],
+                ["Estado Operativo", selectedCase.status]
+              ].map(([k,v])=>(
+                <div key={k} style={{ background:"#F8FAFC", borderRadius:12, padding:"10px 12px", border: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", color:"#94A3B8", marginBottom:2 }}>{k}</div>
+                  <div style={{ fontSize:12.5, fontWeight:700, color:"#1E293B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Coordenadas GPS */}
+            {selectedCase.lat && selectedCase.lng && (
+              <a 
+                href={`https://www.google.com/maps?q=${selectedCase.lat},${selectedCase.lng}`} 
+                target="_blank" 
+                rel="noreferrer"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "10px 16px", borderRadius: 12, backgroundColor: "#E6FDF4",
+                  border: "1.5px solid #A7F3D0", color: "#047857", textDecoration: "none", fontSize: 12.5, fontWeight: 700
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <MapPin size={16} />
+                  <span>GPS: {selectedCase.lat?.toFixed(4)}, {selectedCase.lng?.toFixed(4)}</span>
+                </div>
+                <span style={{ fontSize: 11, textDecoration: "underline" }}>Ver en Google Maps ↗</span>
+              </a>
+            )}
+
+            {/* Protocolo Fitosanitario */}
+            <div style={{ background: "#F0F9FF", border: "1.5px solid #BAE6FD", borderRadius: 14, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#0369A1", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                <Sparkles size={14} /> Recomendación de Manejo Agronómico:
+              </div>
+              <p style={{ fontSize: 12, color: "#0C4A6E", margin: 0, lineHeight: 1.5 }}>
+                {selectedCase.prescription || RECS[selectedCase.diagnosis] || RECS["Sano"]}
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              <button 
+                onClick={()=>{openPrescription(selectedCase);setSelectedCase(null);}} 
+                className="table-btn-primary" 
+                style={{ flex: 1, padding: "12px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+              >
+                <Send size={15}/> Emitir / Modificar Receta
+              </button>
+              <button 
+                onClick={()=>setSelectedCase(null)} 
+                className="table-btn-outline" 
+                style={{ padding: "12px 20px" }}
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
-          <button onClick={()=>{openPrescription(selectedCase);setSelectedCase(null);}} className="table-btn-primary" style={{ width:"100%", padding:12 }}>
-            <Send size={14} style={{ display:"inline", marginRight:6 }}/>Emitir Receta Agronomica
+        </MModal>
+      )}
+
+      {/* MODAL DE RECETA AGRONÓMICA */}
+      {prescriptionCase && (
+        <MModal onClose={()=>setPrescriptionCase(null)} title={`Receta Agronómica · ${prescriptionCase.farmer}`}>
+          <p style={{ fontSize:12, color:"#64748B", marginBottom:12 }}>
+            Diagnóstico: <strong style={{ color:"#1E293B" }}>{prescriptionCase.diagnosis}</strong> · Certeza: <strong style={{ color:"#005088" }}>{prescriptionCase.confidence}%</strong> · Finca: <strong style={{ color:"#1E293B" }}>{prescriptionCase.location}</strong>
+          </p>
+          <textarea value={prescriptionText} onChange={e=>setPrescriptionText(e.target.value)}
+            placeholder="Escribe las indicaciones técnicas para el productor..."
+            style={{ width:"100%", minHeight:130, padding:14, borderRadius:12, border:"1.5px solid #CBD5E1",
+              fontFamily:"Outfit,sans-serif", fontSize:13, resize:"vertical", outline:"none", boxSizing:"border-box", color:"#1E293B" }}/>
+          <button onClick={savePrescription} className="table-btn-primary" style={{ width:"100%", marginTop:14, padding:12, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <Send size={15}/> Guardar y Enviar al Agricultor
           </button>
         </MModal>
       )}
 
-      {/* Modal de Receta */}
-      {prescriptionCase && (
-        <MModal onClose={()=>setPrescriptionCase(null)} title={`Receta · ${prescriptionCase.farmer}`}>
-          <p style={{ fontSize:12, color:"#64748B", marginBottom:12 }}>
-            Diagnostico: <strong style={{ color:"#1E293B" }}>{prescriptionCase.diagnosis}</strong> · Certeza: <strong style={{ color:"#005088" }}>{prescriptionCase.confidence}%</strong>
-          </p>
-          <textarea value={prescriptionText} onChange={e=>setPrescriptionText(e.target.value)}
-            style={{ width:"100%", minHeight:130, padding:12, borderRadius:10, border:"1.5px solid #E2E8F0",
-              fontFamily:"Outfit,sans-serif", fontSize:13, resize:"vertical", outline:"none", boxSizing:"border-box", color:"#1E293B" }}/>
-          <button onClick={savePrescription} className="table-btn-primary" style={{ width:"100%", marginTop:12, padding:12, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-            <Send size={14}/> Guardar y Enviar Receta
-          </button>
-        </MModal>
+      {/* MODAL LIGHTBOX PARA FOTOS EN PANTALLA COMPLETA */}
+      {lightboxImage && (
+        <div 
+          onClick={() => setLightboxImage(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 10000,
+            backgroundColor: "rgba(10, 18, 30, 0.9)",
+            backdropFilter: "blur(8px)",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            padding: 24, cursor: "zoom-out"
+          }}
+        >
+          <div style={{ position: "relative", maxWidth: "90vw", maxHeight: "85vh", display: "flex", flexDirection: "column", alignItems: "center" }} onClick={e=>e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", width: "100%", marginBottom: 12, alignItems: "center" }}>
+              <span style={{ color: "#FFF", fontSize: 14, fontWeight: 700 }}>{lightboxImage.title}</span>
+              <button onClick={()=>setLightboxImage(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#FFF", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={16} />
+              </button>
+            </div>
+            <img 
+              src={lightboxImage.url} 
+              alt={lightboxImage.title}
+              style={{ maxWidth: "100%", maxHeight: "75vh", borderRadius: 16, border: "2px solid rgba(255,255,255,0.2)", boxShadow: "0 20px 50px rgba(0,0,0,0.5)", objectFit: "contain" }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -919,9 +1130,9 @@ function SBadge({ s }) {
 
 function MModal({ onClose, title, children }) {
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(15,23,42,0.6)", backdropFilter:"blur(6px)" }}>
-      <div style={{ background:"#fff", borderRadius:20, padding:28, width:"100%", maxWidth:520, maxHeight:"85vh", overflowY:"auto", boxShadow:"0 24px 64px rgba(0,0,0,0.2)" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+    <div style={{ position:"fixed", inset:0, zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(15,23,42,0.65)", backdropFilter:"blur(6px)" }}>
+      <div style={{ background:"#fff", borderRadius:20, padding:26, width:"100%", maxWidth:560, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 24px 64px rgba(0,0,0,0.25)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
           <h3 style={{ fontSize:17, fontWeight:800, color:"#1E293B" }}>{title}</h3>
           <button onClick={onClose} style={{ background:"#F1F5F9", border:"none", borderRadius:8, padding:8, cursor:"pointer" }}><X size={15}/></button>
         </div>
