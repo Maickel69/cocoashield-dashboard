@@ -4,13 +4,14 @@ import {
   AlertTriangle, Search, Download, X,
   MapPin, User, Cpu, Send, Sparkles, Info, LogOut,
   Shield, Activity, Users, BarChart3, Lock, Eye, EyeOff,
-  ShieldAlert
+  ShieldAlert, Sun, Moon
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell
 } from "recharts";
 import { MONTHLY_OUTBREAKS, CASES_TABLE } from "./data/mockData";
+import GisMap from "./components/GisMap";
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || "https://cocoashield-backend.onrender.com";
 
@@ -383,6 +384,13 @@ export default function App() {
   const [filterDate, setFilterDate]       = useState("Todos");
   const [searchQuery, setSearchQuery]     = useState("");
   const [lightboxImage, setLightboxImage] = useState(null);
+  const [theme, setTheme]                 = useState(() => localStorage.getItem("cocoashield_theme") || "dark");
+
+  // Sincronizar tema con elemento raíz HTML
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("cocoashield_theme", theme);
+  }, [theme]);
 
   // Cargar sesión persistida al arrancar
   useEffect(() => {
@@ -655,6 +663,15 @@ export default function App() {
             {activeSection==="reports"   && <><h1>Reportes y Recetas</h1><p>Historial de diagnosticos IA y fichas agronomicas</p></>}
           </div>
           <div className="top-nav-actions">
+            <button
+              className="theme-toggle-btn"
+              onClick={() => setTheme(p => p === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? "Cambiar a Modo Claro" : "Cambiar a Modo Oscuro"}
+            >
+              {theme === "dark" ? <Sun size={15} color="#F59E0B" /> : <Moon size={15} color="#38BDF8" />}
+              <span>{theme === "dark" ? "Modo Claro" : "Modo Oscuro"}</span>
+            </button>
+
             <div className="sync-status-indicator">
               <span className="sync-dot-blink" style={{
                 backgroundColor: backendStatus==="connected" ? "#11CAA0" : backendStatus==="offline" ? "#EF4444" : "#F59E0B",
@@ -673,18 +690,77 @@ export default function App() {
             <>
               <section className="kpi-row">
                 {[
-                  { icon:<Activity size={22}/>,      title:"Total Escaneos",       value:metrics.totalScans, trend:"+12% este mes",     bg:"linear-gradient(135deg,#005088,#0070bb)", glow:"rgba(0,80,136,0.25)" },
-                  { icon:<AlertTriangle size={22}/>, title:"Alertas Activas",      value:metrics.alerts,     trend:"Requieren atencion", bg:"linear-gradient(135deg,#DC2626,#EF4444)", glow:"rgba(239,68,68,0.25)" },
-                  { icon:<Cpu size={22}/>,          title:"Patogeno Frecuente",   value:metrics.top,        trend:"Incidencia alta",    bg:"linear-gradient(135deg,#D97706,#F59E0B)", glow:"rgba(245,158,11,0.25)", small:true },
-                  { icon:<Users size={22}/>,        title:"Productores Activos",  value:metrics.farmers,    trend:"Brigadas en campo",  bg:"linear-gradient(135deg,#059669,#10B981)", glow:"rgba(16,185,129,0.25)" }
-                ].map((k,i) => (
-                  <div key={i} className="kpi-card" style={{ background:k.bg, boxShadow:`0 8px 24px ${k.glow}`, border:"none" }}>
-                    <div className="kpi-info">
-                      <span className="kpi-title" style={{ color:"rgba(255,255,255,0.75)" }}>{k.title}</span>
-                      <span className="kpi-value" style={{ color:"#fff", fontSize:k.small?18:32 }}>{k.value}</span>
-                      <span className="kpi-trend" style={{ color:"rgba(255,255,255,0.65)", fontSize:11 }}>{k.trend}</span>
+                  {
+                    icon: <Activity size={20} color="#0284C7" />,
+                    title: "Total Escaneos",
+                    value: metrics.totalScans,
+                    trend: "+12% este mes",
+                    trendType: "pos",
+                    accent: "linear-gradient(90deg, #0284C7, #38BDF8)",
+                    iconBg: "rgba(2, 132, 199, 0.12)"
+                  },
+                  {
+                    icon: <AlertTriangle size={20} color="#EF4444" />,
+                    title: "Alertas Fitosanitarias",
+                    value: metrics.alerts,
+                    trend: "Requieren atención",
+                    trendType: "neg",
+                    accent: "linear-gradient(90deg, #DC2626, #EF4444)",
+                    iconBg: "rgba(239, 68, 68, 0.12)"
+                  },
+                  {
+                    icon: <Cpu size={20} color="#F59E0B" />,
+                    title: "Patógeno Predominante",
+                    value: metrics.top,
+                    trend: "Incidencia prioritaria",
+                    trendType: "warn",
+                    accent: "linear-gradient(90deg, #D97706, #F59E0B)",
+                    iconBg: "rgba(245, 158, 11, 0.12)",
+                    isText: true
+                  },
+                  {
+                    icon: <Users size={20} color="#10B981" />,
+                    title: "Productores en Campo",
+                    value: metrics.farmers,
+                    trend: "13 brigadas activas",
+                    trendType: "pos",
+                    accent: "linear-gradient(90deg, #059669, #10B981)",
+                    iconBg: "rgba(16, 185, 129, 0.12)"
+                  }
+                ].map((k, i) => (
+                  <div key={i} className="kpi-card-v2" style={{ "--kpi-gradient": k.accent }}>
+                    <div className="kpi-card-v2-header">
+                      <span className="kpi-card-v2-title">{k.title}</span>
+                      <div className="kpi-card-v2-icon" style={{ backgroundColor: k.iconBg }}>
+                        {k.icon}
+                      </div>
                     </div>
-                    <div className="kpi-icon-container" style={{ backgroundColor:"rgba(255,255,255,0.15)", color:"#fff" }}>{k.icon}</div>
+                    <div className="kpi-card-v2-body">
+                      <div className="kpi-card-v2-value" style={{ fontSize: k.isText ? 21 : 34 }}>
+                        {k.value}
+                      </div>
+                    </div>
+                    <div className="kpi-card-v2-footer">
+                      <span
+                        className="kpi-card-v2-trend"
+                        style={{
+                          backgroundColor:
+                            k.trendType === "pos"
+                              ? "rgba(16, 185, 129, 0.12)"
+                              : k.trendType === "neg"
+                              ? "rgba(239, 68, 68, 0.12)"
+                              : "rgba(245, 158, 11, 0.12)",
+                          color:
+                            k.trendType === "pos"
+                              ? "#10B981"
+                              : k.trendType === "neg"
+                              ? "#EF4444"
+                              : "#F59E0B"
+                        }}
+                      >
+                        {k.trend}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </section>
@@ -697,12 +773,19 @@ export default function App() {
                   <div className="chart-viewport">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={monthlyData} margin={{ top:10, right:30, left:0, bottom:0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9"/>
-                        <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} fontWeight={600}/>
-                        <YAxis stroke="#94A3B8" fontSize={11} fontWeight={600}/>
-                        <Tooltip contentStyle={{ borderRadius:12, border:"1px solid #E2E8F0", boxShadow:"0 8px 24px rgba(0,0,0,0.1)", fontFamily:"Outfit,sans-serif" }}/>
+                        <CartesianGrid strokeDasharray="3 3" stroke={theme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9"}/>
+                        <XAxis dataKey="month" stroke={theme === "dark" ? "#64748B" : "#94A3B8"} fontSize={11} fontWeight={600}/>
+                        <YAxis stroke={theme === "dark" ? "#64748B" : "#94A3B8"} fontSize={11} fontWeight={600}/>
+                        <Tooltip contentStyle={{
+                          borderRadius:12,
+                          border: theme === "dark" ? "1px solid rgba(255,255,255,0.1)" : "1px solid #E2E8F0",
+                          boxShadow:"0 8px 24px rgba(0,0,0,0.25)",
+                          backgroundColor: theme === "dark" ? "#121C30" : "#FFFFFF",
+                          color: theme === "dark" ? "#F8FAFC" : "#0F172A",
+                          fontFamily:"Outfit,sans-serif"
+                        }}/>
                         <Legend wrapperStyle={{ fontSize:12, fontWeight:600 }}/>
-                        <Line type="monotone" dataKey="Monilia" stroke="#005088" strokeWidth={2.5} activeDot={{ r:6 }}/>
+                        <Line type="monotone" dataKey="Monilia" stroke="#38BDF8" strokeWidth={2.5} activeDot={{ r:6 }}/>
                         <Line type="monotone" dataKey="EscobaDebruja" stroke="#11CAA0" strokeWidth={2.5} name="Escoba de Bruja"/>
                         <Line type="monotone" dataKey="MazorcaNegra" stroke="#F59E0B" strokeWidth={2.5} name="Mazorca Negra"/>
                       </LineChart>
@@ -720,7 +803,12 @@ export default function App() {
                         <Pie data={pie} cx="50%" cy="50%" innerRadius={55} outerRadius={78} paddingAngle={3} dataKey="value">
                           {pie.map((e,i) => <Cell key={i} fill={e.color}/>)}
                         </Pie>
-                        <Tooltip formatter={v => [`${v} casos`,"Frecuencia"]}/>
+                        <Tooltip formatter={v => [`${v} casos`,"Frecuencia"]} contentStyle={{
+                          borderRadius:10,
+                          backgroundColor: theme === "dark" ? "#121C30" : "#FFFFFF",
+                          border: theme === "dark" ? "1px solid rgba(255,255,255,0.1)" : "1px solid #E2E8F0",
+                          color: theme === "dark" ? "#F8FAFC" : "#0F172A"
+                        }}/>
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="custom-legend-grid">
@@ -738,21 +826,21 @@ export default function App() {
               <section className="panel-card" style={{ marginTop:24 }}>
                 <div className="panel-card-header">
                   <div className="panel-card-title-group">
-                    <h2 style={{ display:"flex", alignItems:"center", gap:8 }}><BarChart3 size={17} color="#005088"/>Ultimos Diagnosticos</h2>
+                    <h2 style={{ display:"flex", alignItems:"center", gap:8 }}><BarChart3 size={17} color="#11CAA0"/>Ultimos Diagnosticos</h2>
                     <p>Los casos mas recientes registrados en el sistema</p>
                   </div>
                 </div>
                 <div style={{ padding:"0 20px 16px" }}>
                   {cases.slice(0,6).map(c => (
-                    <div key={c.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid #F8FAFC" }}>
+                    <div key={c.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderBottom:"1px solid var(--color-border)" }}>
                       <span className="case-id-badge">{c.id}</span>
                       <div 
                         onClick={() => (c.image || c.photo) && setLightboxImage({ url: c.image || c.photo, title: `Caso ${c.id} · ${c.diagnosis}` })}
                         title={(c.image || c.photo) ? "Clic para ampliar foto" : "Sin foto"}
                         style={{
-                          width: 38, height: 38, borderRadius: 8, overflow: "hidden",
-                          border: "1px solid #E2E8F0", flexShrink: 0, cursor: (c.image || c.photo) ? "pointer" : "default",
-                          backgroundColor: "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center"
+                          width: 40, height: 40, borderRadius: 10, overflow: "hidden",
+                          border: "1px solid var(--color-border)", flexShrink: 0, cursor: (c.image || c.photo) ? "pointer" : "default",
+                          backgroundColor: "var(--color-card-subtle)", display: "flex", alignItems: "center", justifyContent: "center"
                         }}
                       >
                         {(c.image || c.photo) ? (
@@ -762,109 +850,37 @@ export default function App() {
                         )}
                       </div>
                       <div style={{ flex:1, minWidth: 0 }}>
-                        <div style={{ fontSize:13, fontWeight:700, color:"#1E293B", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                        <div style={{ fontSize:13.5, fontWeight:700, color:"var(--color-text-dark)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                           {c.diagnosis}
                         </div>
-                        <div style={{ fontSize:11, color:"#94A3B8", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                        <div style={{ fontSize:11.5, color:"var(--color-text-muted)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                           {c.location} · {c.farmer}
                         </div>
                       </div>
-                      <span style={{ fontSize:12.5, fontWeight:800, color:"#10B981" }}>{c.confidence}%</span>
+                      <span style={{ fontSize:13, fontWeight:800, color:"#10B981" }}>{c.confidence}%</span>
                       <SBadge s={c.status}/>
                     </div>
                   ))}
-                  {cases.length===0 && <p style={{ color:"#94A3B8", textAlign:"center", padding:"28px 0", fontSize:13 }}>Sin diagnósticos aún. Usa la app móvil para registrar el primer caso.</p>}
+                  {cases.length===0 && <p style={{ color:"var(--color-text-muted)", textAlign:"center", padding:"28px 0", fontSize:13 }}>Sin diagnósticos aún. Usa la app móvil para registrar el primer caso.</p>}
                 </div>
               </section>
             </>
           )}
 
-          {/* MAPA EPIDEMIOLOGICO */}
+          {/* MAPA EPIDEMIOLOGICO GIS INTERACTIVO */}
           {activeSection==="map" && (
-            <section className="map-layout-container">
-              <div className="map-wrapper-box">
-                <div className="map-legend-overlay">
-                  <h4 className="map-legend-title">Severidad</h4>
-                  {[["var(--color-critical)","Crítico"],["var(--color-warning)","En Seguimiento"],["var(--color-success)","Sano"]].map(([c,l])=>(
-                    <div key={l} className="map-legend-row"><span className="map-legend-color" style={{ backgroundColor:c }}/><span>{l}</span></div>
-                  ))}
-                </div>
-                <svg viewBox="0 0 500 400" className="svg-map-element" style={{ background:"#E2E8F0" }}>
-                  <defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0L0 0 0 40" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8"/></pattern></defs>
-                  <rect width="100%" height="100%" fill="url(#grid)"/>
-                  <path d="M0,0 L220,0 L190,140 L0,80Z" fill="#D8E8D5" opacity="0.4"/>
-                  <path d="M220,0 L500,0 L500,120 L280,180Z" fill="#CBDCC3" opacity="0.3"/>
-                  <path d="M0,80 L190,140 L160,340 L0,400Z" fill="#D3E4CD" opacity="0.3"/>
-                  <path d="M-20,290 C120,300 140,210 240,190 C340,170 380,80 520,70" fill="none" stroke="#A3C6D3" strokeWidth="8" strokeLinecap="round" opacity="0.8"/>
-                  <path d="M120,-10 L120,410 M0,160 L510,160" fill="none" stroke="#F1E3D3" strokeWidth="3" strokeDasharray="5 3" opacity="0.6"/>
-                  <text x="170" y="128" fontSize="9" fontWeight="bold" fill="#4A5D4E" opacity="0.7">FINCA LA ESTRELLA</text>
-                  <text x="310" y="375" fontSize="9" fontWeight="bold" fill="#4A5D4E" opacity="0.7">COOPERATIVA SUR</text>
-                  {filtered.map(item => {
-                    const p = mapPos(item.lat, item.lng);
-                    const sel = selectedMapCase?.id===item.id;
-                    const col = item.status==="Resuelto" ? "var(--color-success)" : item.status==="En seguimiento" ? "var(--color-warning)" : "var(--color-critical)";
-                    return (
-                      <g key={item.id} onClick={()=>setSelectedMapCase(item)} style={{ cursor:"pointer" }}>
-                        <circle cx={p.x} cy={p.y} r={sel?16:10} fill={col} fillOpacity={sel?0.28:0.15}/>
-                        <circle cx={p.x} cy={p.y} r={sel?7:5} fill={col} stroke="#fff" strokeWidth={sel?2:1.5}/>
-                      </g>
-                    );
-                  })}
-                </svg>
-                {selectedMapCase && (
-                  <div className="map-popup-drawer">
-                    <div className="popup-body" style={{ padding:20 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          {(selectedMapCase.image || selectedMapCase.photo) && (
-                            <img 
-                              src={selectedMapCase.image || selectedMapCase.photo} 
-                              alt={selectedMapCase.diagnosis} 
-                              style={{ width:48, height:48, borderRadius:10, objectFit:"cover", border:"1.5px solid #E2E8F0", cursor:"pointer" }}
-                              onClick={() => setLightboxImage({ url: selectedMapCase.image || selectedMapCase.photo, title: `${selectedMapCase.id} - ${selectedMapCase.diagnosis}` })}
-                            />
-                          )}
-                          <div>
-                            <div className="popup-location-name">{selectedMapCase.location}</div>
-                            <div className="popup-farmer-name"><User size={11} style={{ display:"inline", marginRight:4 }}/>{selectedMapCase.farmer}</div>
-                          </div>
-                        </div>
-                        <button onClick={()=>setSelectedMapCase(null)} style={{ background:"#F1F5F9", border:"none", borderRadius:8, padding:6, cursor:"pointer" }}><X size={14}/></button>
-                      </div>
-                      <div className="popup-stats-grid" style={{ marginBottom:14 }}>
-                        {[["Diagnostico",selectedMapCase.diagnosis],["Certeza",`${selectedMapCase.confidence}%`],["Estado",selectedMapCase.status],["Region",selectedMapCase.region]].map(([k,v])=>(
-                          <div key={k}><span className="popup-stat-title">{k}</span><span className="popup-stat-val">{v}</span></div>
-                        ))}
-                      </div>
-                      <button onClick={()=>openPrescription(selectedMapCase)} className="popup-btn-action primary" style={{ width:"100%" }}>Emitir Receta</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="map-filters-panel">
-                <div className="panel-card-title-group" style={{ borderBottom:"1px solid var(--color-border)", paddingBottom:12 }}>
-                  <h2>Filtros del Mapa</h2><p>Refinar visualización geográfica</p>
-                </div>
-                <div className="filter-group">
-                  <label className="filter-label">Fecha</label>
-                  <select className="filter-select" value={filterDate} onChange={e=>setFilterDate(e.target.value)}>
-                    <option value="Todos">Todos los registros</option>
-                    <option value="7d">Últimos 7 días</option>
-                    <option value="30d">Últimos 30 días</option>
-                  </select>
-                </div>
-                <div className="filter-group">
-                  <label className="filter-label">Provincia</label>
-                  <select className="filter-select" value={filterRegion} onChange={e=>setFilterRegion(e.target.value)}>
-                    {["Todas","Sucumbios","Napo","Orellana","Pastaza"].map(v=><option key={v} value={v}>{v==="Todas"?"Todas las provincias":v}</option>)}
-                  </select>
-                </div>
-                <div style={{ background:"#F0F9FF", border:"1px solid #BAE6FD", padding:14, borderRadius:12, display:"flex", gap:8 }}>
-                  <Info size={15} style={{ color:"#0284C7", flexShrink:0, marginTop:2 }}/>
-                  <p style={{ fontSize:11, color:"#0369A1", lineHeight:1.5 }}>Haz clic en un pin del mapa para ver la foto de la mazorca y emitir receta agronómica.</p>
-                </div>
-              </div>
-            </section>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <GisMap
+                cases={filtered}
+                theme={theme}
+                filterDisease={filterDisease}
+                setFilterDisease={setFilterDisease}
+                selectedCase={selectedMapCase}
+                setSelectedCase={setSelectedMapCase}
+                onOpenPrescription={openPrescription}
+                onOpenLightbox={setLightboxImage}
+              />
+            </div>
           )}
 
           {/* REPORTES Y RECETAS */}
