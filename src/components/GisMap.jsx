@@ -16,7 +16,7 @@ export default function GisMap({
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersLayerRef = useRef(null);
-  const [mapLayer, setMapLayer] = useState("carto"); // "carto" | "osm" | "satellite"
+  const [mapLayer, setMapLayer] = useState("auto"); // "auto" | "dark" | "topo" | "satellite"
 
   // Inicializar mapa de Leaflet
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function GisMap({
     };
   }, []);
 
-  // Actualizar capa de mosaicos según tema y selección
+  // Actualizar capa de mosaicos según tema y selección (Libres de Watermarks / Sin API Key)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -61,19 +61,44 @@ export default function GisMap({
       }
     });
 
-    let tileUrl = "";
-    if (mapLayer === "satellite") {
-      tileUrl = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-    } else if (theme === "dark") {
-      tileUrl = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-    } else {
-      tileUrl = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-    }
+    const activeMode = mapLayer === "auto" ? (theme === "dark" ? "dark" : "topo") : mapLayer;
 
-    L.tileLayer(tileUrl, {
-      maxZoom: 19,
-      subdomains: "abcd"
-    }).addTo(map);
+    if (activeMode === "satellite") {
+      // 🛰️ Capa Satelital de Alta Resolución (Esri World Imagery)
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        maxNativeZoom: 18,
+        attribution: "Esri World Imagery"
+      }).addTo(map);
+
+      // Etiquetas y fronteras transparentes sobre satélite
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        maxNativeZoom: 18
+      }).addTo(map);
+
+    } else if (activeMode === "dark") {
+      // 🌑 Capa Oscura Táctica Base (Esri Dark Gray Canvas - Sin Watermark)
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        maxNativeZoom: 16,
+        attribution: "Esri Dark Gray Canvas"
+      }).addTo(map);
+
+      // Etiquetas de ciudades y límites territoriales
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        maxNativeZoom: 16
+      }).addTo(map);
+
+    } else {
+      // 🗺️ Capa de Topografía / Relieve y Ríos Amazónicos (Esri World Topo Map)
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        maxNativeZoom: 18,
+        attribution: "Esri World Topo"
+      }).addTo(map);
+    }
   }, [theme, mapLayer]);
 
   // Actualizar marcadores interactivos georreferenciados
@@ -151,34 +176,88 @@ export default function GisMap({
           ))}
         </div>
 
-        {/* HUD resumen y selector de capa */}
-        <div style={{ display: "flex", gap: 8, pointerEvents: "auto" }}>
+        {/* HUD resumen y selector de capas sin marcas de agua */}
+        <div style={{ display: "flex", gap: 8, pointerEvents: "auto", alignItems: "center" }}>
           <div className="gis-hud-badge">
             <Compass size={14} color="#11CAA0" />
             <span>{cases.length} Fincas Monitoreadas</span>
           </div>
 
-          <button
-            onClick={() => setMapLayer((p) => (p === "carto" ? "satellite" : "carto"))}
-            title="Alternar satélite / mapa"
+          <div
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "7px 14px",
-              borderRadius: 12,
               background: "var(--color-card-bg)",
               border: "1px solid var(--color-border)",
-              color: "var(--color-text-dark)",
-              fontSize: 12,
-              fontWeight: 700,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
-              cursor: "pointer"
+              borderRadius: 12,
+              padding: 3,
+              gap: 3,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.18)"
             }}
           >
-            <Layers size={13} color="#11CAA0" />
-            <span>{mapLayer === "satellite" ? "Mapa" : "Satélite"}</span>
-          </button>
+            <button
+              onClick={() => setMapLayer("dark")}
+              title="Modo Oscuro Táctico"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "6px 11px",
+                borderRadius: 8,
+                border: "none",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                background: (mapLayer === "dark" || (mapLayer === "auto" && theme === "dark")) ? "#11CAA0" : "transparent",
+                color: (mapLayer === "dark" || (mapLayer === "auto" && theme === "dark")) ? "#0B192C" : "var(--color-text-dark)",
+                transition: "all 0.2s ease"
+              }}
+            >
+              <span>🌑 Oscuro</span>
+            </button>
+
+            <button
+              onClick={() => setMapLayer("topo")}
+              title="Mapa Topográfico y Fluvial"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "6px 11px",
+                borderRadius: 8,
+                border: "none",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                background: (mapLayer === "topo" || (mapLayer === "auto" && theme !== "dark")) ? "#11CAA0" : "transparent",
+                color: (mapLayer === "topo" || (mapLayer === "auto" && theme !== "dark")) ? "#0B192C" : "var(--color-text-dark)",
+                transition: "all 0.2s ease"
+              }}
+            >
+              <span>🗺️ Relieve</span>
+            </button>
+
+            <button
+              onClick={() => setMapLayer("satellite")}
+              title="Vista Satelital Real de Fincas"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "6px 11px",
+                borderRadius: 8,
+                border: "none",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                background: mapLayer === "satellite" ? "#11CAA0" : "transparent",
+                color: mapLayer === "satellite" ? "#0B192C" : "var(--color-text-dark)",
+                transition: "all 0.2s ease"
+              }}
+            >
+              <Layers size={13} />
+              <span>🛰️ Satélite</span>
+            </button>
+          </div>
         </div>
       </div>
 
