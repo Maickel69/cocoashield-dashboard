@@ -10,7 +10,7 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell
 } from "recharts";
-import { MONTHLY_OUTBREAKS } from "./data/mockData";
+import { MONTHLY_OUTBREAKS, CASES_TABLE } from "./data/mockData";
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || "https://cocoashield-backend.onrender.com";
 
@@ -424,8 +424,26 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     fetch(`${BACKEND_URL}/api/cases`, { signal: AbortSignal.timeout(15000) })
-      .then(r => r.json()).then(d => { setCases(d); setBackendStatus("connected"); })
-      .catch(() => setBackendStatus("offline"));
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d) && d.length > 0) {
+          const normalized = d.map(c => ({
+            ...c,
+            image: c.image || c.photo,
+            photo: c.image || c.photo
+          }));
+          const existingIds = new Set(normalized.map(x => x.id));
+          const merged = [...normalized, ...CASES_TABLE.filter(x => !existingIds.has(x.id))];
+          setCases(merged);
+        } else {
+          setCases(CASES_TABLE);
+        }
+        setBackendStatus("connected");
+      })
+      .catch(() => {
+        setCases(CASES_TABLE);
+        setBackendStatus("offline");
+      });
   }, [currentUser]);
 
   // Suscripción SSE en tiempo real
